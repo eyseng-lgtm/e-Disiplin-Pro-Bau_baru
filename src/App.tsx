@@ -21,6 +21,8 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { PWAInstallButton } from './components/PWAInstallButton';
+import { OfflineIndicator } from './components/OfflineIndicator';
 
 // Types
 interface DisciplineRecord {
@@ -491,20 +493,23 @@ Sekian, terima kasih.
             <p className="text-[9px] sm:text-[10px] font-bold text-slate-500 uppercase tracking-[0.15em] sm:tracking-[0.2em]">SISTEM PENGURUSAN DISIPLIN DIGITAL (E-DISIPLIN PRO)</p>
           </div>
         </div>
-        <button 
-          className="bg-red-50 text-red-600 border border-red-200 px-3.5 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-bold hover:bg-red-100 transition-all flex items-center gap-2 cursor-pointer"
-          onClick={() =>
-            setConfirmDialog({
-              title: 'Log Keluar Sesi',
-              message: 'Adakah anda pasti mahu memuat semula sesi aplikasi ini?',
-              confirmLabel: 'Log Keluar',
-              onConfirm: () => window.location.reload()
-            })
-          }
-        >
-          <LogOut size={16} />
-          <span>LOG KELUAR</span>
-        </button>
+        <div className="flex items-center gap-2.5">
+          <PWAInstallButton />
+          <button 
+            className="bg-red-50 text-red-600 border border-red-200 px-3.5 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-bold hover:bg-red-100 transition-all flex items-center gap-2 cursor-pointer"
+            onClick={() =>
+              setConfirmDialog({
+                title: 'Log Keluar Sesi',
+                message: 'Adakah anda pasti mahu memuat semula sesi aplikasi ini?',
+                confirmLabel: 'Log Keluar',
+                onConfirm: () => window.location.reload()
+              })
+            }
+          >
+            <LogOut size={16} />
+            <span>LOG KELUAR</span>
+          </button>
+        </div>
       </header>
 
       {/* Main Layout - Professional Polish Grid */}
@@ -1071,6 +1076,8 @@ Sekian, terima kasih.
           </motion.div>
         )}
       </AnimatePresence>
+
+      <OfflineIndicator />
     </div>
   );
 }

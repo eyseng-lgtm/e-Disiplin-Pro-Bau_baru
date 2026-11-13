@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#163475" />
+      <stop offset="100%" stop-color="#0b1d45" />
+    </linearGradient>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#dfc07b" />
+      <stop offset="100%" stop-color="#b48c42" />
+    </linearGradient>
+  </defs>
+  <!-- Full-bleed background (clean for iOS/Android) -->
+  <rect width="512" height="512" rx="96" fill="url(#bgGrad)" />
+  <!-- Subtle gold inner border -->
+  <rect x="20" y="20" width="472" height="472" rx="80" fill="none" stroke="url(#goldGrad)" stroke-width="6" stroke-opacity="0.45" />
+  <!-- Outer Shield -->
+  <path
+    d="M256 76 L396 128 V244 C396 336 336 408 256 436 C176 408 116 336 116 244 V128 L256 76 Z"
+    fill="#0f2658"
+    stroke="url(#goldGrad)"
+    stroke-width="16"
+    stroke-linejoin="round"
+  />
+  <!-- Inner Shield Accent -->
+  <path
+    d="M256 106 L368 148 V242 C368 318 320 378 256 404 C192 378 144 318 144 242 V148 L256 106 Z"
+    fill="#153270"
+  />
+  <!-- Clipboard / Document Check Emblem -->
+  <rect x="196" y="176" width="120" height="148" rx="14" fill="#ffffff" />
+  <rect x="224" y="160" width="64" height="26" rx="8" fill="url(#goldGrad)" />
+  <!-- Document Lines -->
+  <line x1="218" y1="218" x2="294" y2="218" stroke="#cbd5e1" stroke-width="10" stroke-linecap="round" />
+  <line x1="218" y1="246" x2="276" y2="246" stroke="#cbd5e1" stroke-width="10" stroke-linecap="round" />
+  <!-- Gold Verification Badge -->
+  <circle cx="288" cy="288" r="34" fill="url(#goldGrad)" stroke="#0f2658" stroke-width="6" />
+  <path
+    d="M273 288 L284 299 L305 276"
+    fill="none"
+    stroke="#0f2658"
+    stroke-width="9"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>
