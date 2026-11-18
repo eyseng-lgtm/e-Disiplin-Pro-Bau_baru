@@ -16,13 +16,26 @@ import {
   Printer,
   Database,
   CheckCircle2,
-  AlertTriangle
+  AlertTriangle,
+  ExternalLink,
+  FolderOpen
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { PWAInstallButton } from './components/PWAInstallButton';
 import { OfflineIndicator } from './components/OfflineIndicator';
+
+const LEGACY_DRIVE_FOLDER_ID = '1aDb96JL-KqwDQP9rg4XK7Ue8N84L8yAw';
+const DEFAULT_DRIVE_FOLDER_ID = '1Qu6_JZXruCxsS7uTPaax3_w0BzUl5YzatKkbxaPF6YU';
+
+const extractDriveFolderId = (rawInput: string): string => {
+  const trimmed = rawInput.trim();
+  if (!trimmed) return '';
+  const folderMatch = trimmed.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+  if (folderMatch?.[1]) return folderMatch[1];
+  return trimmed.split(/[?&#/]/)[0].trim();
+};
 
 // Types
 interface DisciplineRecord {
@@ -112,6 +125,13 @@ export default function App() {
   const [isFetching, setIsFetching] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
   const [syncUrl, setSyncUrl] = useState(() => localStorage.getItem('eDisiplin_syncUrl') || 'https://script.google.com/macros/s/AKfycbwRV6PeLJvKJnoLV6isA9ASVCfoMHhIBnpxFaE21WDWDPk8hS_1QnaxAjll8bkjeA5fAQ/exec');
+  const [driveFolderId, setDriveFolderId] = useState(() => {
+    const saved = extractDriveFolderId(localStorage.getItem('eDisiplin_driveFolderId') || '');
+    if (!saved || saved === LEGACY_DRIVE_FOLDER_ID) {
+      return DEFAULT_DRIVE_FOLDER_ID;
+    }
+    return saved;
+  });
   const [filterTab, setFilterTab] = useState<'today' | 'week' | 'month' | 'all'>('today');
   const [showAllRecordsModal, setShowAllRecordsModal] = useState(false);
   const [modalSearchQuery, setModalSearchQuery] = useState('');
@@ -128,8 +148,12 @@ export default function App() {
   };
 
   useEffect(() => {
+    localStorage.setItem('eDisiplin_driveFolderId', driveFolderId);
+  }, [driveFolderId]);
+
+  useEffect(() => {
     if (!toast) return;
-    const timer = setTimeout(() => setToast(null), 3500);
+    const timer = setTimeout(() => setToast(null), 4000);
     return () => clearTimeout(timer);
   }, [toast]);
   
@@ -261,7 +285,7 @@ export default function App() {
         await fetch(syncUrl, {
           method: 'POST',
           mode: 'no-cors',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
           body: JSON.stringify({ action: 'addRecord', data: newRecord })
         });
       } catch (err) {
@@ -272,25 +296,84 @@ export default function App() {
     const updatedRecords = [newRecord, ...records];
     setRecords(updatedRecords);
     localStorage.setItem('eDisiplin_records', JSON.stringify(updatedRecords));
+
+    // Auto-generate PDF and upload to Google Drive folder on Save
+    const { doc, fileName } = buildReportPdf(newRecord);
+    const pdfSaved = await savePdfToCloud(doc, fileName, true);
+
     setIsSaving(false);
-    showToast(`Rekod disiplin ${newRecord.studentName} berjaya disimpan.`, 'success');
+    if (pdfSaved) {
+      showToast(`Rekod & PDF "${fileName}" disimpan ke Google Drive.`, 'success');
+    } else {
+      showToast(`Rekod ${newRecord.studentName} disimpan (PDF gagal dihantar ke Drive).`, 'info');
+    }
     
     setFormData(prev => ({ ...prev, studentName: '', intervention: '' }));
   };
 
-  const savePdfToCloud = async (doc: jsPDF, fileName: string) => {
-    if (!syncUrl) return;
-    const base64 = doc.output('datauristring').split(',')[1];
-    try {
-      await fetch(syncUrl, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'savePDF', base64, fileName })
-      });
-    } catch (e) {
-      console.error("PDF upload failed", e);
+  const savePdfToCloud = async (
+    doc: jsPDF,
+    fileName: string,
+    suppressToast = false
+  ): Promise<boolean> => {
+    if (!syncUrl) {
+      if (!suppressToast) {
+        showToast('URL Apps Script tiada. PDF dimuat turun ke peranti sahaja.', 'info');
+      }
+      return false;
     }
+
+    const cleanFolderId = extractDriveFolderId(driveFolderId) || DEFAULT_DRIVE_FOLDER_ID;
+    const base64 = doc.output('datauristring').split(',')[1];
+    const payload = JSON.stringify({
+      action: 'savePDF',
+      base64,
+      fileName,
+      folderId: cleanFolderId,
+    });
+
+    try {
+      const response = await fetch(syncUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: payload,
+      });
+
+      if (response.ok) {
+        const result = await response.json().catch(() => null);
+        if (result && result.status === 'error') {
+          if (!suppressToast) {
+            showToast(`Gagal simpan ke Drive: ${result.message || 'Ralat skrip'}`, 'error');
+          }
+          return false;
+        }
+        if (!suppressToast) {
+          showToast(`PDF "${fileName}" dihantar ke Google Drive.`, 'success');
+        }
+        return true;
+      }
+    } catch {
+      // Fallback to no-cors for Apps Script deployments without CORS response headers
+      try {
+        await fetch(syncUrl, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: payload,
+        });
+        if (!suppressToast) {
+          showToast(`PDF "${fileName}" dihantar ke Google Drive.`, 'success');
+        }
+        return true;
+      } catch (e) {
+        console.error('PDF upload failed', e);
+      }
+    }
+
+    if (!suppressToast) {
+      showToast('Gagal menghantar PDF ke Google Drive. Semak URL Apps Script.', 'error');
+    }
+    return false;
   };
 
   const deleteRecord = (id: string) => {
@@ -308,7 +391,7 @@ export default function App() {
     });
   };
 
-  const generateReport = async (record: DisciplineRecord) => {
+  const buildReportPdf = (record: DisciplineRecord) => {
     const doc = new jsPDF();
     
     // Header
@@ -347,8 +430,13 @@ export default function App() {
     doc.text(`Tarikh Cetakan: ${new Date().toLocaleString()}`, 20, 285);
 
     const fileName = `Laporan_${record.studentName}_${record.date}.pdf`;
+    return { doc, fileName };
+  };
+
+  const generateReport = async (record: DisciplineRecord) => {
+    const { doc, fileName } = buildReportPdf(record);
     doc.save(fileName);
-    savePdfToCloud(doc, fileName);
+    await savePdfToCloud(doc, fileName);
   };
 
   const generateLetter = async (record: DisciplineRecord) => {
@@ -408,10 +496,10 @@ Sekian, terima kasih.
 
     const fileName = `Surat_Amaran_${record.studentName}.pdf`;
     doc.save(fileName);
-    savePdfToCloud(doc, fileName);
+    await savePdfToCloud(doc, fileName);
   };
 
-  const generateSummaryPDF = (recordsToExport: DisciplineRecord[]) => {
+  const generateSummaryPDF = async (recordsToExport: DisciplineRecord[]) => {
     const doc = new jsPDF();
     
     // Header
@@ -456,6 +544,7 @@ Sekian, terima kasih.
 
     const summaryFileName = `Ringkasan_Laporan_Disiplin_${getLocalDateString()}.pdf`;
     doc.save(summaryFileName);
+    await savePdfToCloud(doc, summaryFileName);
   };
 
   // Helper for Violation Badge
@@ -493,7 +582,7 @@ Sekian, terima kasih.
             <p className="text-[9px] sm:text-[10px] font-bold text-slate-500 uppercase tracking-[0.15em] sm:tracking-[0.2em]">SISTEM PENGURUSAN DISIPLIN DIGITAL (E-DISIPLIN PRO)</p>
           </div>
         </div>
-        <div className="flex items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2.5">
           <PWAInstallButton />
           <button 
             className="bg-red-50 text-red-600 border border-red-200 px-3.5 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-bold hover:bg-red-100 transition-all flex items-center gap-2 cursor-pointer"
@@ -649,15 +738,49 @@ Sekian, terima kasih.
                   exit={{ height: 0, opacity: 0 }}
                   className="overflow-hidden"
                 >
-                  <div className="pt-3 space-y-2">
-                    <p className="text-[9px] text-slate-400 font-medium">Masukkan URL Web App Apps Script anda untuk sinkronisasi Google Sheets.</p>
-                    <input 
-                      type="text" 
-                      placeholder="https://script.google.com/macros/s/..."
-                      className="w-full bg-white border border-slate-200 rounded px-2 py-1.5 text-[10px] outline-none focus:border-gov-blue"
-                      value={syncUrl}
-                      onChange={e => setSyncUrl(e.target.value)}
-                    />
+                  <div className="pt-3 space-y-3">
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[9px] text-slate-500 font-bold uppercase tracking-wider flex items-center gap-1">
+                          <FolderOpen size={11} /> ID Folder Google Drive (PDF)
+                        </label>
+                        {extractDriveFolderId(driveFolderId) && (
+                          <a
+                            href={`https://drive.google.com/drive/folders/${extractDriveFolderId(driveFolderId)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[9px] font-bold text-gov-blue hover:underline flex items-center gap-0.5"
+                          >
+                            Buka Drive <ExternalLink size={9} />
+                          </a>
+                        )}
+                      </div>
+                      <input 
+                        type="text" 
+                        placeholder={DEFAULT_DRIVE_FOLDER_ID}
+                        className="w-full bg-white border border-slate-200 rounded px-2 py-1.5 text-[10px] font-mono outline-none focus:border-gov-blue"
+                        value={driveFolderId}
+                        onChange={e => setDriveFolderId(e.target.value)}
+                        onBlur={() => {
+                          const clean = extractDriveFolderId(driveFolderId);
+                          if (clean) setDriveFolderId(clean);
+                        }}
+                      />
+                      <p className="text-[9px] text-slate-500 font-medium">
+                        ID folder ini dihantar bersama PDF ke Apps Script anda untuk disimpan ke Google Drive.
+                      </p>
+                    </div>
+
+                    <div className="space-y-1">
+                      <p className="text-[9px] text-slate-400 font-medium">URL Web App Apps Script (Sinkronisasi Google Sheets):</p>
+                      <input 
+                        type="text" 
+                        placeholder="https://script.google.com/macros/s/..."
+                        className="w-full bg-white border border-slate-200 rounded px-2 py-1.5 text-[10px] outline-none focus:border-gov-blue"
+                        value={syncUrl}
+                        onChange={e => setSyncUrl(e.target.value)}
+                      />
+                    </div>
                   </div>
                 </motion.div>
               )}
