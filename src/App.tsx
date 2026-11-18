@@ -298,12 +298,21 @@ export default function App() {
     localStorage.setItem('eDisiplin_records', JSON.stringify(updatedRecords));
 
     // Auto-generate PDF and upload to Google Drive folder on Save
-    const { doc, fileName } = buildReportPdf(newRecord);
+    // If Tindakan is Amaran (Bertulis), generate Surat Amaran PDF; otherwise generate Laporan PDF
+    const isWrittenWarning = newRecord.action.toLowerCase().includes('bertulis');
+    const { doc, fileName } = isWrittenWarning
+      ? await buildLetterPdf(newRecord)
+      : buildReportPdf(newRecord);
     const pdfSaved = await savePdfToCloud(doc, fileName, true);
 
     setIsSaving(false);
     if (pdfSaved) {
-      showToast(`Rekod & PDF "${fileName}" disimpan ke Google Drive.`, 'success');
+      showToast(
+        isWrittenWarning
+          ? `Rekod & Surat Amaran "${fileName}" disimpan ke Google Drive.`
+          : `Rekod & Laporan "${fileName}" disimpan ke Google Drive.`,
+        'success'
+      );
     } else {
       showToast(`Rekod ${newRecord.studentName} disimpan (PDF gagal dihantar ke Drive).`, 'info');
     }
@@ -439,7 +448,7 @@ export default function App() {
     await savePdfToCloud(doc, fileName);
   };
 
-  const generateLetter = async (record: DisciplineRecord) => {
+  const buildLetterPdf = async (record: DisciplineRecord) => {
     const doc = new jsPDF();
     
     // Add Logo safely (handles CORS / offline gracefully)
@@ -494,7 +503,12 @@ Sekian, terima kasih.
     doc.setFontSize(8);
     doc.text('* Ini adalah cetakan komputer. Tandatangan tidak diperlukan.', 20, 202);
 
-    const fileName = `Surat_Amaran_${record.studentName}.pdf`;
+    const fileName = `Surat_Amaran_${record.studentName}_${record.date}.pdf`;
+    return { doc, fileName };
+  };
+
+  const generateLetter = async (record: DisciplineRecord) => {
+    const { doc, fileName } = await buildLetterPdf(record);
     doc.save(fileName);
     await savePdfToCloud(doc, fileName);
   };
@@ -682,6 +696,12 @@ Sekian, terima kasih.
                     <option value="">-- PILIH TINDAKAN --</option>
                     {ACTIONS.map(a => <option key={a} value={a}>{a}</option>)}
                   </select>
+                  {formData.action.toLowerCase().includes('bertulis') && (
+                    <p className="text-[10px] font-medium text-gov-blue flex items-center gap-1 mt-0.5">
+                      <Mail size={11} className="flex-shrink-0" />
+                      <span>Surat Amaran PDF akan dijana &amp; disimpan ke Google Drive semasa simpan.</span>
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex flex-col gap-1.5">
